@@ -42,7 +42,7 @@ const MORSE_NODES = [
   // Per image: O M T are joined by a horizontal line on the LEFT; E I S H on the RIGHT
   { id: 'T', letter: 'T', code: '−',    x: G.col2, y: ROW.top, shape: 'square', parent: 'root', branch: 'dash', lx: 0,  ly: -22 },
   { id: 'M', letter: 'M', code: '−−',   x: G.col1, y: ROW.top, shape: 'square', parent: 'T',    branch: 'dash', lx: 0,  ly: -22 },
-  { id: 'O', letter: 'O', code: '−−−',  x: G.col0, y: ROW.top, shape: 'circle', parent: 'M',    branch: 'dash', lx: 0,  ly: -22 },
+  { id: 'O', letter: 'O', code: '−−−',  x: G.col0, y: ROW.top, shape: 'square', parent: 'M',    branch: 'dash', lx: 0,  ly: -22 },
 
   { id: 'E', letter: 'E', code: '·',    x: G.col4, y: ROW.top, shape: 'circle', parent: 'root', branch: 'dot',  lx: 0,  ly: -22 },
   { id: 'I', letter: 'I', code: '··',   x: G.col5, y: ROW.top, shape: 'circle', parent: 'E',    branch: 'dot',  lx: 0,  ly: -22 },

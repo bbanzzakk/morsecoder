@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>모스부호 트리</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,6 +16,10 @@
     color: oklch(0.20 0.01 80);
   }
   #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  @media (max-width: 600px) {
+    html, body { height: 100dvh; background: oklch(0.97 0.005 80); }
+    #root { display: block; }
+  }
   * { box-sizing: border-box; }
   button { font-family: inherit; }
   select { font-family: inherit; }
@@ -140,13 +144,24 @@ function LetterSelect({ value, onChange }) {
 
 // ── Bottom press button (large, with subtle dial styling) ──
 function PressButton({ onPressStart, onPressEnd, label, active }) {
+  const pressingRef = useRef(false);
+  const handleDown = (e) => {
+    if (pressingRef.current) return;
+    pressingRef.current = true;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    onPressStart();
+  };
+  const handleUp = () => {
+    if (!pressingRef.current) return;
+    pressingRef.current = false;
+    onPressEnd();
+  };
   return (
     <button
-      onMouseDown={(e) => { e.preventDefault(); onPressStart(); }}
-      onMouseUp={onPressEnd}
-      onMouseLeave={onPressEnd}
-      onTouchStart={(e) => { e.preventDefault(); onPressStart(); }}
-      onTouchEnd={onPressEnd}
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerCancel={handleUp}
+      onContextMenu={(e) => e.preventDefault()}
       style={{
         width: 64, height: 64, borderRadius: '50%',
         background: active ? INK : PAPER,
@@ -158,6 +173,10 @@ function PressButton({ onPressStart, onPressEnd, label, active }) {
         transform: active ? 'scale(0.97)' : 'scale(1)',
         outline: 'none',
         userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        touchAction: 'none',
       }}>
       <div style={{
         width: 44, height: 44, borderRadius: '50%',
@@ -225,7 +244,16 @@ function App() {
   const [pressing, setPressing] = useState(false);      // button held down
   const [isInputting, setIsInputting] = useState(false); // any activity in last LETTER_GAP
 
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 600px)').matches);
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 600px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
   const pressStartRef = useRef(0);
+  const pressingRef = useRef(false);
   const letterTimerRef = useRef(null);
   const wordTimerRef = useRef(null);
   const idleTimerRef = useRef(null);
@@ -260,6 +288,8 @@ function App() {
   };
 
   const handlePressStart = () => {
+    if (pressingRef.current) return;
+    pressingRef.current = true;
     setPressing(true);
     setIsInputting(true);
     pressStartRef.current = Date.now();
@@ -268,7 +298,8 @@ function App() {
   };
 
   const handlePressEnd = () => {
-    if (!pressing) return;
+    if (!pressingRef.current) return;
+    pressingRef.current = false;
     setPressing(false);
     const dur = Date.now() - pressStartRef.current;
     const symbol = dur < DOT_MAX ? '·' : '−';
@@ -324,8 +355,7 @@ function App() {
     setTapFocusId(null);
   };
 
-  return (
-    <IOSDevice dark={false} width={390} height={844}>
+  const innerContent = (
       <div style={{
         width: '100%', height: '100%',
         background: PAPER,
@@ -335,9 +365,10 @@ function App() {
       }}>
         {/* Header — dynamic: while inputting shows current letter+code; when idle shows decoded sentence */}
         <div style={{
-          padding: '52px 20px 16px',
+          padding: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 4px) 20px 12px' : '52px 20px 16px',
           borderBottom: `1px solid ${HAIRLINE}`,
-          height: 156,
+          height: isMobile ? 'auto' : 156,
+          minHeight: isMobile ? 92 : undefined,
           flexShrink: 0,
           boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
@@ -401,7 +432,7 @@ function App() {
 
         {/* Bottom controls */}
         <div style={{
-          padding: '14px 24px 32px',
+          padding: isMobile ? '8px 24px calc(env(safe-area-inset-bottom, 0px) + 4px)' : '14px 24px 32px',
           borderTop: `1px solid ${HAIRLINE}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
@@ -463,6 +494,25 @@ function App() {
           </TweakSection>
         </TweaksPanel>
       </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div style={{
+        width: '100vw', height: '100dvh',
+        background: PAPER, color: INK,
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        boxSizing: 'border-box',
+      }}>
+        {innerContent}
+      </div>
+    );
+  }
+
+  return (
+    <IOSDevice dark={false} width={390} height={844}>
+      {innerContent}
     </IOSDevice>
   );
 }

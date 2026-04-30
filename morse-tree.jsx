@@ -108,13 +108,6 @@ function MorseTree({ activePath, currentId, onTapNode }) {
   return (
     <svg viewBox="0 0 360 600" width="100%" height="100%" preserveAspectRatio="xMidYMid meet"
          style={{ display: 'block' }}>
-      <defs>
-        <radialGradient id="bgGrad" cx="50%" cy="40%" r="80%">
-          <stop offset="0%" stopColor={MorseTreeStyles.bg} />
-          <stop offset="100%" stopColor={MorseTreeStyles.bgGrad} />
-        </radialGradient>
-      </defs>
-      <rect x="0" y="0" width="360" height="600" fill="url(#bgGrad)" />
       <StarField />
 
       {/* Edges first (under nodes) */}
