@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>모스부호 트리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: oklch(0.94 0.005 80);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    color: oklch(0.20 0.01 80);
+  }
+  #root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  * { box-sizing: border-box; }
+  button { font-family: inherit; }
+  select { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="morse-data.js"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="morse-tree.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "highlightOnTap": true
+}/*EDITMODE-END*/;
+
+const MONO = "'JetBrains Mono', ui-monospace, monospace";
+const INK = 'oklch(0.20 0.01 80)';
+const INK_DIM = 'oklch(0.45 0.005 80)';
+const INK_FAINT = 'oklch(0.65 0.005 80)';
+const PAPER = 'oklch(0.97 0.005 80)';
+const HAIRLINE = 'oklch(0.86 0.005 80)';
+
+// ── Icons ──
+const IconChevronLeft = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IconChevronDown = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IconReset = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M3 12a9 9 0 1 0 3-6.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M3 4v5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+// ── Header select ──
+function LetterSelect({ value, onChange }) {
+  const node = MORSE_NODES.find(n => n.id === value);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const letters = MORSE_NODES.filter(n => n.letter);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 12px',
+          background: PAPER,
+          border: `1px solid ${HAIRLINE}`,
+          borderRadius: 10,
+          cursor: 'pointer',
+          color: INK,
+          minWidth: 150,
+        }}>
+        <span style={{
+          fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em',
+          color: INK_DIM, textTransform: 'uppercase',
+        }}>LETTER</span>
+        <span style={{
+          fontFamily: MONO, fontSize: 14, fontWeight: 500, color: INK,
+          letterSpacing: '0.04em',
+        }}>{node?.letter || '—'}</span>
+        <span style={{
+          fontFamily: MONO, fontSize: 12, color: INK_DIM,
+          letterSpacing: '0.14em', flex: 1, textAlign: 'right',
+        }}>{node?.code || ''}</span>
+        <span style={{ color: INK_DIM, display: 'flex' }}><IconChevronDown /></span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: PAPER,
+          border: `1px solid ${HAIRLINE}`,
+          borderRadius: 10,
+          maxHeight: 280, overflowY: 'auto',
+          zIndex: 50,
+          boxShadow: '0 8px 24px oklch(0.20 0.01 80 / 0.06)',
+        }}>
+          {letters.map(n => (
+            <button key={n.id}
+              onClick={() => { onChange(n.id); setOpen(false); }}
+              style={{
+                width: '100%', textAlign: 'left',
+                padding: '8px 12px',
+                background: n.id === value ? 'oklch(0.93 0.005 80)' : 'transparent',
+                border: 'none', borderBottom: `1px solid ${HAIRLINE}`,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10,
+                fontFamily: MONO,
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: INK, width: 16 }}>{n.letter}</span>
+              <span style={{ fontSize: 12, color: INK_DIM, letterSpacing: '0.14em' }}>{n.code}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Bottom press button (large, with subtle dial styling) ──
+function PressButton({ onPressStart, onPressEnd, label, active }) {
+  return (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); onPressStart(); }}
+      onMouseUp={onPressEnd}
+      onMouseLeave={onPressEnd}
+      onTouchStart={(e) => { e.preventDefault(); onPressStart(); }}
+      onTouchEnd={onPressEnd}
+      style={{
+        width: 64, height: 64, borderRadius: '50%',
+        background: active ? INK : PAPER,
+        border: `1px solid ${active ? INK : HAIRLINE}`,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative',
+        transition: 'background 80ms, transform 80ms, border-color 80ms',
+        transform: active ? 'scale(0.97)' : 'scale(1)',
+        outline: 'none',
+        userSelect: 'none',
+      }}>
+      <div style={{
+        width: 44, height: 44, borderRadius: '50%',
+        border: `1px solid ${active ? 'oklch(0.40 0.01 80)' : HAIRLINE}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{
+          fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
+          color: active ? PAPER : INK_DIM, textTransform: 'uppercase',
+        }}>{label}</span>
+      </div>
+    </button>
+  );
+}
+
+function IconButton({ onClick, children, ariaLabel }) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <button
+      aria-label={ariaLabel}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)}
+      onClick={onClick}
+      style={{
+        width: 44, height: 44, borderRadius: '50%',
+        background: pressed ? 'oklch(0.92 0.005 80)' : PAPER,
+        border: `1px solid ${HAIRLINE}`,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: INK,
+        transition: 'background 120ms, transform 120ms',
+        transform: pressed ? 'scale(0.96)' : 'scale(1)',
+        outline: 'none',
+      }}>
+      {children}
+    </button>
+  );
+}
+
+// Timing thresholds (ms)
+const DOT_MAX = 200;        // press shorter than this = dot
+const LETTER_GAP = 800;     // silence after press = commit current letter
+const WORD_GAP = 2000;      // silence longer = add space (word break)
+
+// Lookup: morse code string → letter id
+const CODE_TO_LETTER = (() => {
+  const map = {};
+  MORSE_NODES.filter(n => n.letter).forEach(n => { map[n.code] = n; });
+  return map;
+})();
+
+// Find best matching node for a partial code (longest prefix match)
+function nodeForCode(code) {
+  if (!code) return null;
+  return CODE_TO_LETTER[code] || null;
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Morse input state
+  const [currentCode, setCurrentCode] = useState('');   // accumulating dots/dashes for the in-progress letter
+  const [sentence, setSentence] = useState('');         // committed decoded text
+  const [pressing, setPressing] = useState(false);      // button held down
+  const [isInputting, setIsInputting] = useState(false); // any activity in last LETTER_GAP
+
+  const pressStartRef = useRef(0);
+  const letterTimerRef = useRef(null);
+  const wordTimerRef = useRef(null);
+  const idleTimerRef = useRef(null);
+
+  // Tree highlight tracks the live input state.
+  const inProgressNode = currentCode ? nodeForCode(currentCode) : null;
+
+  // Last committed letter (used as fallback focus when not actively inputting)
+  const lastCommittedLetter = sentence.replace(/\s+$/, '').slice(-1);
+  const lastCommittedNode = lastCommittedLetter ? MORSE_NODES.find(n => n.letter === lastCommittedLetter) : null;
+
+  // Manual tap focus (lets user explore the tree by tapping)
+  const [tapFocusId, setTapFocusId] = useState(null);
+
+  const treeFocusId = inProgressNode?.id || tapFocusId || lastCommittedNode?.id || null;
+  const path = useMemo(() => treeFocusId ? pathToLetter(treeFocusId) : [], [treeFocusId]);
+
+  const clearTimers = () => {
+    if (letterTimerRef.current) clearTimeout(letterTimerRef.current);
+    if (wordTimerRef.current) clearTimeout(wordTimerRef.current);
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+  };
+
+  // Live preview of the in-progress code — used for header "INPUT" state
+
+  const commitLetter = (codeToCommit) => {
+    const node = nodeForCode(codeToCommit);
+    if (node) {
+      setSentence(s => s + node.letter);
+    }
+    setCurrentCode('');
+  };
+
+  const handlePressStart = () => {
+    setPressing(true);
+    setIsInputting(true);
+    pressStartRef.current = Date.now();
+    // Cancel any pending letter/word commit while user is actively pressing
+    clearTimers();
+  };
+
+  const handlePressEnd = () => {
+    if (!pressing) return;
+    setPressing(false);
+    const dur = Date.now() - pressStartRef.current;
+    const symbol = dur < DOT_MAX ? '·' : '−';
+    setCurrentCode(prev => {
+      const next = prev + symbol;
+      // schedule letter commit after silence
+      if (letterTimerRef.current) clearTimeout(letterTimerRef.current);
+      letterTimerRef.current = setTimeout(() => {
+        setCurrentCode(curr => {
+          if (!curr) return curr;
+          const node = nodeForCode(curr);
+          if (node) {
+            setSentence(s => s + node.letter);
+          }
+          return '';
+        });
+      }, LETTER_GAP);
+
+      // word break if even longer silence
+      if (wordTimerRef.current) clearTimeout(wordTimerRef.current);
+      wordTimerRef.current = setTimeout(() => {
+        setSentence(s => s.endsWith(' ') ? s : s + ' ');
+      }, WORD_GAP);
+
+      return next;
+    });
+
+    // After silence, switch header to "sentence mode"
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => setIsInputting(false), LETTER_GAP);
+  };
+
+  const onTapNode = (id) => {
+    if (!tweaks.highlightOnTap) return;
+    setTapFocusId(prev => prev === id ? null : id);
+  };
+
+  const goBack = () => {
+    // Remove last char from sentence; clear in-progress code
+    if (currentCode) {
+      setCurrentCode(c => c.slice(0, -1));
+    } else {
+      setSentence(s => s.slice(0, -1));
+    }
+  };
+
+  const reset = () => {
+    clearTimers();
+    setCurrentCode('');
+    setSentence('');
+    setIsInputting(false);
+    setPressing(false);
+    setTapFocusId(null);
+  };
+
+  return (
+    <IOSDevice dark={false} width={390} height={844}>
+      <div style={{
+        width: '100%', height: '100%',
+        background: PAPER,
+        display: 'flex', flexDirection: 'column',
+        position: 'relative',
+        color: INK,
+      }}>
+        {/* Header — dynamic: while inputting shows current letter+code; when idle shows decoded sentence */}
+        <div style={{
+          padding: '52px 20px 16px',
+          borderBottom: `1px solid ${HAIRLINE}`,
+          height: 156,
+          flexShrink: 0,
+          boxSizing: 'border-box',
+          display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+        }}>
+          {isInputting ? (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+              <div style={{
+                fontFamily: MONO, fontSize: 36, fontWeight: 500,
+                color: INK, letterSpacing: '0.02em', lineHeight: 1,
+                minWidth: 28,
+              }}>
+                {inProgressNode?.letter || '·'}
+              </div>
+              <div style={{
+                fontFamily: MONO, fontSize: 22, fontWeight: 400,
+                color: currentCode ? INK : INK_FAINT,
+                letterSpacing: '0.18em', lineHeight: 1,
+                flex: 1,
+              }}>
+                {currentCode || '—'}
+              </div>
+              <div style={{
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.18em',
+                color: INK_FAINT, textTransform: 'uppercase',
+              }}>INPUT</div>
+            </div>
+          ) : (
+            <div>
+              <div style={{
+                fontFamily: MONO, fontSize: 10, letterSpacing: '0.2em',
+                color: INK_DIM, textTransform: 'uppercase', marginBottom: 6,
+              }}>OUTPUT</div>
+              <div style={{
+                fontFamily: MONO, fontSize: 22, fontWeight: 500,
+                color: sentence ? INK : INK_FAINT,
+                letterSpacing: '0.06em', lineHeight: 1.2,
+                wordBreak: 'break-all', minHeight: 27,
+              }}>
+                {sentence || '—'}
+                <span style={{
+                  display: 'inline-block', width: 2, height: 22,
+                  background: INK, marginLeft: 4,
+                  verticalAlign: '-4px',
+                  animation: 'blink 1s step-end infinite',
+                }}></span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tree area */}
+        <div style={{ flex: 1, padding: '8px 4px 0', minHeight: 0, display: 'flex' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <MorseTree
+              activePath={path}
+              currentId={treeFocusId}
+              onTapNode={onTapNode}
+            />
+          </div>
+        </div>
+
+        {/* Bottom controls */}
+        <div style={{
+          padding: '14px 24px 32px',
+          borderTop: `1px solid ${HAIRLINE}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          {/* Left: press button */}
+          <PressButton
+            onPressStart={handlePressStart}
+            onPressEnd={handlePressEnd}
+            label="PRESS"
+            active={pressing}
+          />
+
+          {/* Center: code readout */}
+          <div style={{
+            flex: 1, textAlign: 'center', padding: '0 12px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          }}>
+            <div style={{
+              fontFamily: MONO, fontSize: 26, fontWeight: 500,
+              color: INK, letterSpacing: '0.16em', lineHeight: 1,
+            }}>
+              {inProgressNode?.code || (lastCommittedNode ? lastCommittedNode.code : '—')}
+            </div>
+            <div style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: '0.2em',
+              color: INK_FAINT, textTransform: 'uppercase',
+            }}>
+              {inProgressNode?.letter
+                ? `LETTER ${inProgressNode.letter}`
+                : lastCommittedNode
+                  ? `LAST ${lastCommittedNode.letter}`
+                  : ''}
+            </div>
+          </div>
+
+          {/* Right: back + reset */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <IconButton onClick={goBack} ariaLabel="Back">
+              <IconChevronLeft />
+            </IconButton>
+            <IconButton onClick={reset} ariaLabel="Reset">
+              <IconReset />
+            </IconButton>
+          </div>
+        </div>
+
+        <TweaksPanel title="Tweaks">
+          <TweakSection title="Interaction">
+            <TweakToggle label="Tap to highlight path"
+              value={tweaks.highlightOnTap}
+              onChange={(v) => setTweak('highlightOnTap', v)} />
+          </TweakSection>
+          <TweakSection title="Timing">
+            <div style={{ fontFamily: MONO, fontSize: 11, color: INK_DIM, lineHeight: 1.6 }}>
+              short press (&lt; 200ms) = dot ·<br/>
+              long press = dash −<br/>
+              pause 0.8s → commit letter<br/>
+              pause 2s → space
+            </div>
+          </TweakSection>
+        </TweaksPanel>
+      </div>
+    </IOSDevice>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
